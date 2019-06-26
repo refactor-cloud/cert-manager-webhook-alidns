@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-IMAGE_NAME="lin07/webhook-alidns"
+IMAGE_NAME="lin07/cert-manager-webhook-alidns"
 IMAGE_TAG="latest"
 
 OUT=`pwd`/deploy

@@ -13,7 +13,7 @@ certManager:
   serviceAccountName: cert-manager
 
 image:
-  repository: lin07/webhook-alidns
+  repository: lin07/cert-manager-webhook-alidns
   tag: latest
   pullPolicy: IfNotPresent
 

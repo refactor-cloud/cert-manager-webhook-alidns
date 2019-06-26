@@ -139,7 +139,7 @@ spec:
       serviceAccountName: cert-manager-webhook-alidns
       containers:
         - name: webhook-alidns
-          image: "lin07/webhook-alidns:latest"
+          image: "lin07/cert-manager-webhook-alidns:latest"
           imagePullPolicy: IfNotPresent
           args:
             - --tls-cert-file=/tls/tls.crt

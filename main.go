@@ -8,6 +8,7 @@ import (
 	certmanager_v1alpha1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
 	"github.com/jetstack/cert-manager/pkg/issuer/acme/dns/util"
 	extapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"os"
@@ -193,21 +194,21 @@ func (c *aliyunDNSProviderSolver) getDnsClient(ch *v1alpha1.ChallengeRequest, cf
 	client, ok := c.dnsClients[accessKeyId]
 
 	if !ok {
-		accessKeySecret := cfg.AccessKeySecret
+		// accessKeySecret := cfg.AccessKeySecret
+		// var err error
 
-		//ref := cfg.AccessKeySecretRef
-		//
-		//secret, err := c.client.CoreV1().Secrets(ch.ResourceNamespace).Get(ref.Name, metav1.GetOptions{})
-		//if err != nil {
-		//	return nil, err
-		//}
-		//
-		//accessKeySecretRef, ok := secret.Data[ref.Key]
-		//if !ok {
-		//	return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
-		//}
-		//accessKeySecret = fmt.Sprintf("%s", accessKeySecretRef)
-		var err error
+		ref := cfg.AccessKeySecretRef
+
+		secret, err := c.client.CoreV1().Secrets(ch.ResourceNamespace).Get(ref.Name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		accessKeySecretRef, ok := secret.Data[ref.Key]
+		if !ok {
+			return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
+		}
+		accessKeySecret := fmt.Sprintf("%s", accessKeySecretRef)
 		client, err = alidns.NewClientWithAccessKey(
 			cfg.RegionId, // 您的可用区ID
 			accessKeyId,  // 您的Access Key ID
