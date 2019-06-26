@@ -3,11 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-
+	"github.com/aliyun/alibaba-cloud-sdk-go/sdk/requests"
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/alidns"
+	certmanager_v1alpha1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	"github.com/jetstack/cert-manager/pkg/issuer/acme/dns/util"
 	extapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	//"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"os"
+	"strings"
 
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/apis/acme/v1alpha1"
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/cmd"
@@ -26,25 +30,20 @@ func main() {
 	// webhook, where the Name() method will be used to disambiguate between
 	// the different implementations.
 	cmd.RunWebhookServer(GroupName,
-		&customDNSProviderSolver{},
+		&aliyunDNSProviderSolver{},
 	)
 }
 
-// customDNSProviderSolver implements the provider-specific logic needed to
+// aliyunDNSProviderSolver implements the provider-specific logic needed to
 // 'present' an ACME challenge TXT record for your own DNS provider.
 // To do so, it must implement the `github.com/jetstack/cert-manager/pkg/acme/webhook.Solver`
 // interface.
-type customDNSProviderSolver struct {
-	// If a Kubernetes 'clientset' is needed, you must:
-	// 1. uncomment the additional `client` field in this structure below
-	// 2. uncomment the "k8s.io/client-go/kubernetes" import at the top of the file
-	// 3. uncomment the relevant code in the Initialize method below
-	// 4. ensure your webhook's service account has the required RBAC role
-	//    assigned to it for interacting with the Kubernetes APIs you need.
-	//client kubernetes.Clientset
+type aliyunDNSProviderSolver struct {
+	client     *kubernetes.Clientset
+	dnsClients map[string]*alidns.Client
 }
 
-// customDNSProviderConfig is a structure that is used to decode into when
+// aliyunDNSProviderConfig is a structure that is used to decode into when
 // solving a DNS01 challenge.
 // This information is provided by cert-manager, and may be a reference to
 // additional configuration that's needed to solve the challenge for this
@@ -58,14 +57,12 @@ type customDNSProviderSolver struct {
 // You should not include sensitive information here. If credentials need to
 // be used by your provider here, you should reference a Kubernetes Secret
 // resource and fetch these credentials using a Kubernetes clientset.
-type customDNSProviderConfig struct {
-	// Change the two fields below according to the format of the configuration
-	// to be decoded.
-	// These fields will be set by users in the
-	// `issuer.spec.acme.dns01.providers.webhook.config` field.
-
-	//Email           string `json:"email"`
-	//APIKeySecretRef v1alpha1.SecretKeySelector `json:"apiKeySecretRef"`
+type aliyunDNSProviderConfig struct {
+	RegionId           string                                 `json:"regionId"`
+	AccessKeyId        string                                 `json:"accessKeyId"`
+	AccessKeySecret    string                                 `json:"accessKeySecret"`
+	AccessKeySecretRef certmanager_v1alpha1.SecretKeySelector `json:"accessKeySecretRef"`
+	TTL                *int                                   `json:"ttl"`
 }
 
 // Name is used as the name for this DNS solver when referencing it on the ACME
@@ -74,8 +71,8 @@ type customDNSProviderConfig struct {
 // solvers configured with the same Name() **so long as they do not co-exist
 // within a single webhook deployment**.
 // For example, `cloudflare` may be used as the name of a solver.
-func (c *customDNSProviderSolver) Name() string {
-	return "my-custom-solver"
+func (c *aliyunDNSProviderSolver) Name() string {
+	return "alidns"
 }
 
 // Present is responsible for actually presenting the DNS record with the
@@ -83,16 +80,33 @@ func (c *customDNSProviderSolver) Name() string {
 // This method should tolerate being called multiple times with the same value.
 // cert-manager itself will later perform a self check to ensure that the
 // solver has correctly configured the DNS provider.
-func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
+func (c *aliyunDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 	cfg, err := loadConfig(ch.Config)
 	if err != nil {
 		return err
 	}
 
-	// TODO: do something more useful with the decoded configuration
 	fmt.Printf("Decoded configuration %v", cfg)
 
-	// TODO: add code that sets a record in the DNS provider's console
+	client, err := c.getDnsClient(ch, cfg)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("fqdn:[%s] zone:[%s]\n", ch.ResolvedFQDN, ch.ResolvedZone)
+	domainName := c.extractDomainName(ch.ResolvedZone)
+	request := alidns.CreateAddDomainRecordRequest()
+	request.DomainName = domainName
+	request.RR = c.extractRecordName(ch.ResolvedFQDN, domainName)
+	request.Type = "TXT"
+	request.Value = ch.Key
+	request.TTL = requests.NewInteger(*cfg.TTL)
+	response, err := client.AddDomainRecord(request)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Response: %v", response)
 	return nil
 }
 
@@ -102,8 +116,33 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 // value provided on the ChallengeRequest should be cleaned up.
 // This is in order to facilitate multiple DNS validations for the same domain
 // concurrently.
-func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
-	// TODO: add code that deletes a record from the DNS provider's console
+func (c *aliyunDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
+	cfg, err := loadConfig(ch.Config)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Decoded configuration %v", cfg)
+
+	client, err := c.getDnsClient(ch, cfg)
+	if err != nil {
+		return err
+	}
+	records, err := c.findTxtRecords(client, ch.ResolvedZone, ch.ResolvedFQDN)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if record.Value != ch.Key {
+			continue
+		}
+		request := alidns.CreateDeleteDomainRecordRequest()
+		request.RecordId = record.RecordId
+		_, err = client.DeleteDomainRecord(request)
+		if err != nil {
+			return fmt.Errorf("alidns: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -116,25 +155,28 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 // provider accounts.
 // The stopCh can be used to handle early termination of the webhook, in cases
 // where a SIGTERM or similar signal is sent to the webhook process.
-func (c *customDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
+func (c *aliyunDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
 	///// UNCOMMENT THE BELOW CODE TO MAKE A KUBERNETES CLIENTSET AVAILABLE TO
 	///// YOUR CUSTOM DNS PROVIDER
 
-	//cl, err := kubernetes.NewForConfig(kubeClientConfig)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//c.client = cl
+	cl, err := kubernetes.NewForConfig(kubeClientConfig)
+	if err != nil {
+		return err
+	}
+
+	c.client = cl
 
 	///// END OF CODE TO MAKE KUBERNETES CLIENTSET AVAILABLE
+
+	c.dnsClients = make(map[string]*alidns.Client)
+
 	return nil
 }
 
 // loadConfig is a small helper function that decodes JSON configuration into
 // the typed config struct.
-func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
-	cfg := customDNSProviderConfig{}
+func loadConfig(cfgJSON *extapi.JSON) (aliyunDNSProviderConfig, error) {
+	cfg := aliyunDNSProviderConfig{}
 	// handle the 'base case' where no configuration has been provided
 	if cfgJSON == nil {
 		return cfg, nil
@@ -144,4 +186,120 @@ func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func (c *aliyunDNSProviderSolver) getDnsClient(ch *v1alpha1.ChallengeRequest, cfg aliyunDNSProviderConfig) (*alidns.Client, error) {
+	accessKeyId := cfg.AccessKeyId
+	client, ok := c.dnsClients[accessKeyId]
+
+	if !ok {
+		accessKeySecret := cfg.AccessKeySecret
+
+		//ref := cfg.AccessKeySecretRef
+		//
+		//secret, err := c.client.CoreV1().Secrets(ch.ResourceNamespace).Get(ref.Name, metav1.GetOptions{})
+		//if err != nil {
+		//	return nil, err
+		//}
+		//
+		//accessKeySecretRef, ok := secret.Data[ref.Key]
+		//if !ok {
+		//	return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
+		//}
+		//accessKeySecret = fmt.Sprintf("%s", accessKeySecretRef)
+		var err error
+		client, err = alidns.NewClientWithAccessKey(
+			cfg.RegionId, // 您的可用区ID
+			accessKeyId,  // 您的Access Key ID
+			accessKeySecret,
+		)
+		if err != nil {
+			return nil, err
+		}
+		c.dnsClients[cfg.AccessKeyId] = client
+	}
+	client.OpenLogger()
+	return client, nil
+}
+
+func (c *aliyunDNSProviderSolver) findTxtRecords(client *alidns.Client, zone, fqdn string) ([]alidns.Record, error) {
+	_, zoneName, err := c.getHostedZone(client, zone)
+	if err != nil {
+		return nil, err
+	}
+
+	request := alidns.CreateDescribeDomainRecordsRequest()
+	request.DomainName = zoneName
+	request.PageSize = requests.NewInteger(500)
+
+	var records []alidns.Record
+
+	result, err := client.DescribeDomainRecords(request)
+	if err != nil {
+		return records, fmt.Errorf("API call has failed: %v", err)
+	}
+
+	recordName := c.extractRecordName(fqdn, zoneName)
+	for _, record := range result.DomainRecords.Record {
+		if record.RR == recordName {
+			records = append(records, record)
+		}
+	}
+	return records, nil
+}
+
+func (c *aliyunDNSProviderSolver) getHostedZone(client *alidns.Client, zone string) (string, string, error) {
+	request := alidns.CreateDescribeDomainsRequest()
+
+	var domains []alidns.Domain
+	startPage := 1
+
+	for {
+		request.PageNumber = requests.NewInteger(startPage)
+
+		response, err := client.DescribeDomains(request)
+		if err != nil {
+			return "", "", fmt.Errorf("API call failed: %v", err)
+		}
+
+		domains = append(domains, response.Domains.Domain...)
+
+		if response.PageNumber*response.PageSize >= response.TotalCount {
+			break
+		}
+
+		startPage++
+	}
+
+	authZone, err := util.FindZoneByFqdn(zone, util.RecursiveNameservers)
+	if err != nil {
+		return "", "", err
+	}
+
+	var hostedZone alidns.Domain
+	for _, zone := range domains {
+		if zone.DomainName == util.UnFqdn(authZone) {
+			hostedZone = zone
+		}
+	}
+
+	if hostedZone.DomainId == "" {
+		return "", "", fmt.Errorf("zone %s not found in AliDNS for domain %s", authZone, zone)
+	}
+	return fmt.Sprintf("%v", hostedZone.DomainId), hostedZone.DomainName, nil
+}
+
+func (c *aliyunDNSProviderSolver) extractRecordName(fqdn, domain string) string {
+	if idx := strings.Index(fqdn, "."+domain); idx != -1 {
+		return fqdn[:idx]
+	}
+	return util.UnFqdn(fqdn)
+}
+
+func (c *aliyunDNSProviderSolver) extractDomainName(zone string) string {
+	authZone, err := util.FindZoneByFqdn(zone, util.RecursiveNameservers)
+	if err != nil {
+		return zone
+	}
+	return util.UnFqdn(authZone)
 }

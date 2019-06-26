@@ -6,14 +6,14 @@
 # solve the DNS01 challenge.
 # This group name should be **unique**, hence using your own company's domain
 # here is recommended.
-groupName: acme.mycompany.com
+groupName: acme.lin07.me
 
 certManager:
   namespace: cert-manager
   serviceAccountName: cert-manager
 
 image:
-  repository: mycompany/webhook-image
+  repository: lin07/webhook-alidns
   tag: latest
   pullPolicy: IfNotPresent
 
