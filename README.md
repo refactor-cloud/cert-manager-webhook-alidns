@@ -12,7 +12,7 @@ $ helm install --name cert-manager-webhook-alidns ./deploy/webhook-alidns
 secret
 
 ```bash
-kubectl -n cert-manager create secret generic alidns-credentials --from-literal=accessKeySecret='your alidns accesskeySecret'
+$ kubectl -n cert-manager create secret generic alidns-credentials --from-literal=accessKeySecret='your alidns accesskeySecret'
 ```
 
 RBAC
@@ -137,7 +137,7 @@ An example Go test file has been provided in [main_test.go]().
 > Prepare
 
 ```bash
-scripts/fetch-test-binaries.sh
+$ scripts/fetch-test-binaries.sh
 ```
 
 You can run the test suite with:
