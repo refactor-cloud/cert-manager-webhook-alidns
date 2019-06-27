@@ -1,7 +1,7 @@
 # ACME webhook for alidns
 
 
-## 安装
+## Installation
 
 ```bash
 $ helm install --name cert-manager-webhook-alidns ./deploy/webhook-alidns
@@ -9,7 +9,7 @@ $ helm install --name cert-manager-webhook-alidns ./deploy/webhook-alidns
 
 ## Issuer
 
-创建secret
+secret
 
 ```bash
 kubectl -n cert-manager create secret generic alidns-credentials --from-literal=accessKeySecret='your alidns accesskeySecret'
@@ -95,11 +95,31 @@ spec:
     kind: ClusterIssuer
 ```
 
-检查结果
+Ingress
 
-```bash
-kubectl get secret wildcard-example-cn-tls -o yaml
+```yaml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: example-ingress
+  namespace: default
+  annotations:
+    certmanager.k8s.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - '*.example.cn'
+    secretName: wildcard-example-cn-tls
+  rules:
+  - host: demo.example.cn
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: backend-service
+          servicePort: 80
 ```
+
 ## Development
 
 ### Running the test suite
