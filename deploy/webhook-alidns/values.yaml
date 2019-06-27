@@ -15,7 +15,7 @@ certManager:
 image:
   repository: lin07/cert-manager-webhook-alidns
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 nameOverride: ""
 fullnameOverride: ""

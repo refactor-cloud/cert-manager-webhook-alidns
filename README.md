@@ -1,40 +1,110 @@
-# ACME webhook example
+# ACME webhook for alidns
 
-The ACME issuer type supports an optional 'webhook' solver, which can be used
-to implement custom DNS01 challenge solving logic.
 
-This is useful if you need to use cert-manager with a DNS provider that is not
-officially supported in cert-manager core.
+## 安装
 
-## Why not in core?
+```bash
+$ helm install --name cert-manager-webhook-alidns ./deploy/webhook-alidns
+```
 
-As the project & adoption has grown, there has been an influx of DNS provider
-pull requests to our core codebase. As this number has grown, the test matrix
-has become un-maintainable and so, it's not possible for us to certify that
-providers work to a sufficient level.
+## Issuer
 
-By creating this 'interface' between cert-manager and DNS providers, we allow
-users to quickly iterate and test out new integrations, and then packaging
-those up themselves as 'extensions' to cert-manager.
+创建secret
 
-We can also then provide a standardised 'testing framework', or set of
-conformance tests, which allow us to validate the a DNS provider works as
-expected.
+```bash
+kubectl -n cert-manager create secret generic alidns-credentials --from-literal=accessKeySecret='your alidns accesskeySecret'
+```
 
-## Creating your own webhook
+RBAC
 
-Webhook's themselves are deployed as Kubernetes API services, in order to allow
-administrators to restrict access to webhooks with Kubernetes RBAC.
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: cert-manager-webhook-alidns:secret-reader
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - 'secrets'
+    resourceNames:
+      - 'alidns-credentials'
+    verbs:
+      - 'get'
+      - 'watch'
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: cert-manager-webhook-alidns:secret-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cert-manager-webhook-alidns:secret-reader
+subjects:
+  - apiGroup: ""
+    kind: ServiceAccount
+    name: cert-manager-webhook-alidns
+    namespace: default
+```
 
-This is important, as otherwise it'd be possible for anyone with access to your
-webhook to complete ACME challenge validations and obtain certificates.
+ClusterIssuer
 
-To make the set up of these webhook's easier, we provide a template repository
-that can be used to get started quickly.
+```yaml
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: <your email>
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - selector: 
+        dnsNames:
+        - '*.example.cn'
+      dns01:
+        webhook:
+          config:
+            accessKeyId: <your alidns accessKeyId>
+            accessKeySecretRef:
+              key: accessKeySecret
+              name: alidns-credentials
+            regionId: "cn-beijing"
+            ttl: 600
+          groupName: acme.lin07.me
+          solverName: alidns
+```
 
-### Creating your own repository
+Certificate
+
+```yaml
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: wildcard-example-cn
+spec:
+  secretName: wildcard-example-cn-tls
+  renewBefore: 240h
+  dnsNames:
+  - '*.example.cn'
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+```
+
+检查结果
+
+```bash
+kubectl get secret wildcard-example-cn-tls -o yaml
+```
+## Development
 
 ### Running the test suite
+
+
 
 All DNS providers **must** run the DNS01 provider conformance testing suite,
 else they will have undetermined behaviour when used with cert-manager.
@@ -43,6 +113,12 @@ else they will have undetermined behaviour when used with cert-manager.
 DNS01 webhook.**
 
 An example Go test file has been provided in [main_test.go]().
+
+> Prepare
+
+```bash
+scripts/fetch-test-binaries.sh
+```
 
 You can run the test suite with:
 
