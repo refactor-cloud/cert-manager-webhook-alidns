@@ -193,12 +193,19 @@ func (c *aliyunDNSProviderSolver) getDnsClient(ch *v1alpha1.ChallengeRequest, cf
 	accessKeyId := cfg.AccessKeyId
 	client, ok := c.dnsClients[accessKeyId]
 
-	if !ok {
-		// accessKeySecret := cfg.AccessKeySecret
-		// var err error
+	if ok {
+		return client, nil
+	}
 
+	accessKeySecret := cfg.AccessKeySecret
+	if accessKeySecret == "" {
 		ref := cfg.AccessKeySecretRef
-
+		if ref.Key == "" {
+			return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
+		}
+		if ref.Name == "" {
+			return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
+		}
 		secret, err := c.client.CoreV1().Secrets(ch.ResourceNamespace).Get(ref.Name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
@@ -208,17 +215,19 @@ func (c *aliyunDNSProviderSolver) getDnsClient(ch *v1alpha1.ChallengeRequest, cf
 		if !ok {
 			return nil, fmt.Errorf("no accessKeySecret for %q in secret '%s/%s'", ref.Name, ref.Key, ch.ResourceNamespace)
 		}
-		accessKeySecret := fmt.Sprintf("%s", accessKeySecretRef)
-		client, err = alidns.NewClientWithAccessKey(
-			cfg.RegionId, // 您的可用区ID
-			accessKeyId,  // 您的Access Key ID
-			accessKeySecret,
-		)
-		if err != nil {
-			return nil, err
-		}
-		c.dnsClients[cfg.AccessKeyId] = client
+		accessKeySecret = fmt.Sprintf("%s", accessKeySecretRef)
 	}
+	client, err := alidns.NewClientWithAccessKey(
+		cfg.RegionId, // 您的可用区ID
+		accessKeyId,  // 您的Access Key ID
+		accessKeySecret,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	c.dnsClients[cfg.AccessKeyId] = client
+
 	client.OpenLogger()
 	return client, nil
 }
