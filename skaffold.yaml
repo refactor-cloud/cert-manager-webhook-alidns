@@ -13,8 +13,11 @@ profiles:
           - name: cert-manager-webhook-alidns
             namespace: cert-manager
             chartPath: ./deploy/webhook-alidns
+            #setValueTemplates:
+            #  image.repository: "{{ .IMAGE_NAME }}"
+            #  image.tag: "{{ .TAG }}"
             setValues:
-              image.tag: "latest"
+              #image.tag: "latest"
               # image.pullPolicy: IfNotPresent
               nodeSelector.ddd/domain: "devops"
         flags:

@@ -105,7 +105,7 @@ rules:
     resources:
       - 'secrets'
     resourceNames:
-      - '{{ Values.aliyunCredentials.secretName }}'
+      - '{{ .Values.aliyunCredentials.secretName }}'
     verbs:
       - 'get'
       - 'watch'
@@ -122,7 +122,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "webhook-alidns.serviceAccountName" }}:secret-reader
+  name: {{ include "webhook-alidns.serviceAccountName" . }}:secret-reader
 subjects:
   - apiGroup: ""
     kind: ServiceAccount
