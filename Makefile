@@ -17,4 +17,4 @@ rendered-manifest.yaml:
 	    --name example-webhook \
         --set image.repository=$(IMAGE_NAME) \
         --set image.tag=$(IMAGE_TAG) \
-        deploy/example-webhook > "$(OUT)/rendered-manifest.yaml"
+        deploy/webhook-alidns > "$(OUT)/rendered-manifest.yaml"

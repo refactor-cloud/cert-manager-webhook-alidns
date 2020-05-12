@@ -6,19 +6,19 @@
 # solve the DNS01 challenge.
 # This group name should be **unique**, hence using your own company's domain
 # here is recommended.
-groupName: acme.lin07.me
+groupName: acme.refactor.cloud
 
 certManager:
   namespace: cert-manager
   serviceAccountName: cert-manager
 
 image:
-  repository: lin07/cert-manager-webhook-alidns
-  tag: latest
+  repository: quay.io/refactorcloud/cert-manager-webhook-alidns
+  tag: ""
   pullPolicy: Always
 
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "cert-manager-webhook-alidns"
 
 service:
   type: ClusterIP
