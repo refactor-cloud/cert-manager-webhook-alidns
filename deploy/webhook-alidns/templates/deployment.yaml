@@ -19,7 +19,7 @@ spec:
         app: {{ include "webhook-alidns.name" . }}
         release: {{ .Release.Name }}
     spec:
-      serviceAccountName: {{ include "webhook-alidns.fullname" . }}
+      serviceAccountName: {{ include "webhook-alidns.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
           image: {{ include "webhook-alidns.image.repository" . }}
@@ -32,7 +32,7 @@ spec:
               value: {{ .Values.groupName | quote }}
           ports:
             - name: https
-              containerPort: 443
+              containerPort: {{ .Values.service.port }}
               protocol: TCP
           livenessProbe:
             httpGet:

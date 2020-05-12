@@ -50,3 +50,7 @@ Create chart name and version as used by the chart label.
 {{- define "webhook-alidns.image.repository" -}}
 {{ .Values.image.repository }}:{{ default .Values.image.tag .Chart.AppVersion }}
 {{- end -}}
+
+{{- define "webhook-alidns.serviceAccountName" -}}
+{{ include "webhook-alidns.fullname" . }}
+{{- end -}}

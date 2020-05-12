@@ -12,6 +12,10 @@ certManager:
   namespace: cert-manager
   serviceAccountName: cert-manager
 
+aliyunCredentials:
+  enabled: true
+  secretName: alidns-credentials
+
 image:
   repository: quay.io/refactorcloud/cert-manager-webhook-alidns
   tag: ""

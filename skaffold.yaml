@@ -1,0 +1,22 @@
+apiVersion: skaffold/v2beta3
+kind: Config
+metadata:
+  name: cloud-env
+profiles:
+  - name: default
+    build:
+      artifacts:
+        - image: quay.io/refactorcloud/cert-manager-webhook-alidns
+    deploy:
+      helm:
+        releases:
+          - name: cert-manager-webhook-alidns
+            namespace: cert-manager
+            chartPath: ./deploy/webhook-alidns
+            setValues:
+              image.tag: "latest"
+              # image.pullPolicy: IfNotPresent
+              nodeSelector.ddd/domain: "devops"
+        flags:
+          upgrade:
+            - --install
